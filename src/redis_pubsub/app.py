@@ -1,17 +1,27 @@
-"""FastAPI-приложение: WS-выдача событий и эндпоинт публикации в Redis Pub/Sub."""
+"""Два API-cases.
+
+Кейс 1 (api/events.py): /publish → PUBLISH → listener каждой реплики →
+WS-клиенты /ws/events. Тело события отправляется в канал как есть.
+
+Кейс 2 (api/state.py): /orders → атомарное изменение счётчика и версии + сигнал в
+канал → listener каждой реплики читает снапшот из Redis и рассылает его
+WS-клиентам /ws/state. При подключении клиент сразу получает актуальное состояние.
+
+Здесь только композиция: lifespan (Redis-клиент + слушатели каналов), подключение
+роутеров кейсов и служебный /health.
+"""
 
 import asyncio
-import json
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field
+from fastapi import FastAPI
 
+from redis_pubsub.api import events, state
 from redis_pubsub.config import settings
-from redis_pubsub.hub import Hub
 from redis_pubsub.listener import run_listener
 from redis_pubsub.redis_client import make_redis
 
@@ -20,27 +30,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-hub = Hub()
-
-
-class PublishBody(BaseModel):
-    """Тело запроса на публикацию события.
-
-    Attributes:
-        type: Тип события в терминах домена, например "order_paid".
-        payload: Произвольные данные события.
-    """
-
-    type: str = Field(examples=["order_paid"])
-    payload: dict[str, Any] = Field(default_factory=dict, examples=[{"id": 42}])
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Жизненный цикл приложения: Redis-клиент + задача-слушатель Pub/Sub.
+    """Жизненный цикл приложения: Redis-клиент + две задачи-слушателя Pub/Sub.
 
-    Слушатель стартует до первого запроса и корректно отменяется при остановке —
-    иначе uvicorn убьёт процесс вместе с «висящей» задачей.
+    Слушатели стартуют до первого запроса и корректно отменяются при остановке —
+    иначе uvicorn убьёт процесс вместе с «висящими» задачами.
 
     Args:
         app: Экземпляр FastAPI; в ``app.state`` кладём Redis-клиент.
@@ -50,80 +46,41 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     redis = make_redis()
     await redis.ping()
-    task = asyncio.create_task(run_listener(redis, hub))
     app.state.redis = redis
+
+    tasks = [
+        asyncio.create_task(
+            run_listener(redis, settings.events_channel, events.on_message)
+        ),
+        asyncio.create_task(
+            run_listener(redis, settings.state_channel, state.on_message)
+        ),
+    ]
     logger.info("replica %r up, redis connected", settings.replica_id)
     try:
         yield
     finally:
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         await redis.aclose()
         logger.info("replica %r stopped", settings.replica_id)
 
 
 app = FastAPI(title="redis-pubsub", lifespan=lifespan)
 
+app.include_router(events.router)
+app.include_router(state.router)
+
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    """Проверка жизни реплики: показывает, к какой именно реплике вы попали."""
-    return {"replica": settings.replica_id, "ws_clients": hub.client_count}
-
-
-@app.post("/publish")
-async def publish(body: PublishBody, request: Request) -> dict[str, Any]:
-    """Публикует событие в Redis Pub/Sub.
-
-    PUBLISH уходит в канал, и его получают ВСЕ подписчики канала — то есть
-    listener'ы обеих реплик, а значит и все WS-клиенты на всех репликах.
-    Ответ Redis — число подписчиков, забравших сообщение: 0 означает, что
-    в этот момент слушателей не было (и событие потеряно — природа Pub/Sub).
-
-    Args:
-        body: Тип и payload события.
-        request: Нужен, чтобы достать Redis-клиент из ``app.state``.
-
-    Returns:
-        Служебная информация о публикации: канал, число получателей-подписчиков,
-        через какую реплику опубликовано.
-    """
-    redis = request.app.state.redis
-    envelope = {
-        "type": body.type,
-        "payload": body.payload,
-        "published_via": settings.replica_id,
-    }
-    receivers = await redis.publish(settings.events_channel, json.dumps(envelope))
-    logger.info("published %r, subscribers: %s", body.type, receivers)
+    """Проверка жизни реплики: имя реплики и число WS-клиентов на ней."""
     return {
-        "channel": settings.events_channel,
-        "subscribers_received": receivers,
-        "published_via": settings.replica_id,
+        "replica": settings.replica_id,
+        "events_ws_clients": events.hub.client_count,
+        "state_ws_clients": state.hub.client_count,
     }
-
-
-@app.websocket("/ws/events")
-async def ws_events(ws: WebSocket) -> None:
-    """Отдаёт клиенту поток событий, приходящих из Redis Pub/Sub.
-
-    После подключения клиент получает ``hello`` с именем реплики — так видно,
-    за какой именно репликой он висит (nginx балансирует между app1/app2).
-    Дальше соединение просто живёт: входящие сообщения клиента игнорируются,
-    важно лишь дождаться close/disconnect.
-
-    Args:
-        ws: WebSocket-соединение от FastAPI.
-    """
-    await hub.connect(ws)
-    await ws.send_text(json.dumps({"type": "hello", "replica": settings.replica_id}))
-    try:
-        while True:
-            await ws.receive_text()
-    except WebSocketDisconnect:
-        pass
-    finally:
-        hub.disconnect(ws)
 
 
 def run() -> None:

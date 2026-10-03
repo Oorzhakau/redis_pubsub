@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv, find_dotenv
+from dotenv import find_dotenv, load_dotenv
 from pydantic_settings import BaseSettings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -25,8 +25,10 @@ class Settings(BaseSettings):
         tls_ca: Корневой сертификат нашего CA — им проверяем сервер Redis.
         tls_cert: Клиентский сертификат (mTLS: сервер тоже требует сертификат).
         tls_key: Приватный ключ клиентского сертификата.
-        events_channel: Имя канала Pub/Sub для событий.
+        events_channel: Имя канала Pub/Sub для broadcast-событий (кейс 1).
+        state_channel: Имя канала сигналов «состояние изменилось» (кейс 2).
     """
+
     port: int = 8000
     host: str = "0.0.0.0"
     replica_id: str
@@ -38,6 +40,7 @@ class Settings(BaseSettings):
     tls_cert: Path
     tls_key: Path
     events_channel: str = "events"
+    state_channel: str = "state:changed"
 
 
 settings = Settings(
