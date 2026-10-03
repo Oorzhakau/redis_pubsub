@@ -1,0 +1,36 @@
+name: redis-pubsub
+
+services:
+  redis:
+    image: redis:8.10.2-alpine
+    container_name: redis-pubsub
+    restart: unless-stopped
+    environment:
+      REDIS_USER: ${REDIS_USER}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+      - ./certs:/tls:ro
+      - ./config/users.acl.template:/etc/redis/users.acl.template:ro
+    ports:
+      - "0.0.0.0:${REDIS_PORT:-16379}:6379"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        apk add --no-cache gettext >/dev/null && \
+        envsubst < /etc/redis/users.acl.template > /tmp/users.acl && \
+        chmod 600 /tmp/users.acl && \
+        exec redis-server \
+          --port 0 \
+          --tls-port 6379 \
+          --tls-cert-file /tls/redis.crt \
+          --tls-key-file /tls/redis.key \
+          --tls-ca-cert-file /tls/ca.crt \
+          --tls-auth-clients yes \
+          --aclfile /tmp/users.acl \
+          --appendonly yes
+
+
+volumes:
+  redis-data:

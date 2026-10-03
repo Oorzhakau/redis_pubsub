@@ -1,0 +1,22 @@
+[project]
+name = "redis-pubsub"
+version = "0.1.0"
+description = "Project about use case Redis pub/sub"
+readme = "README.md"
+authors = [
+    { name = "Alexander Oorzhak", email = "oorzhakau@yandex.ru" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.142.2",
+    "redis>=8.1.0",
+    "uvicorn>=0.54.0",
+    "websockets>=17.1",
+]
+
+[project.scripts]
+redis-pubsub = "redis_pubsub:main"
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13.0"]
+build-backend = "uv_build"
