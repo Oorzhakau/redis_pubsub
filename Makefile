@@ -5,11 +5,12 @@ COMPOSE_FILE := docker/compose.yml
 PROJECT      := redis-pubsub
 
 COMPOSE := docker compose -p $(PROJECT) -f $(COMPOSE_FILE) --env-file .env
-certs: $(CERT_FILES)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up down restart logs ps test
+TYPE ?= order_paid
+
+.PHONY: help certs up down restart logs ps app1 app2 ws1 ws2 publish
 
 help: ## Показать список доступных команд
 >@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -33,3 +34,18 @@ logs: ## Хвост логов (Ctrl+C для выхода)
 
 ps: ## Статус сервисов
 >$(COMPOSE) ps
+
+app1: ## Запустить реплику app1 на :8001 (Ctrl+C — остановить)
+>@REPLICA_ID=app1 PORT=8001 uv run server
+
+app2: ## Запустить реплику app2 на :8002 (Ctrl+C — остановить)
+>@REPLICA_ID=app2 PORT=8002 uv run server
+
+ws1: ## WS-клиент к реплике app1
+>@uv run ws --port 8001
+
+ws2: ## WS-клиент к реплике app2
+>@@uv run ws --port 8002
+
+publish: ## Опубликовать событие в Redis (make publish TYPE=order_paid)
+>@curl -s -X POST localhost:8001/publish -H 'content-type: application/json' -d '{"type":"$(TYPE)","payload":{"id":42}}' && echo

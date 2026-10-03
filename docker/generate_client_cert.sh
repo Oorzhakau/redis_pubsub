@@ -16,6 +16,7 @@ openssl req -new -key client.key \
 openssl x509 -req -in client.csr \
   -CA ca.crt -CAkey ca.key -CAcreateserial \
   -days 365 -sha256 \
+  -extfile <(printf "basicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth") \
   -out client.crt
 
 chmod 600 client.key

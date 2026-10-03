@@ -9,13 +9,16 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.142.2",
+    "pydantic-settings>=2.15.0",
+    "python-dotenv>=1.2.4",
     "redis>=8.1.0",
     "uvicorn>=0.54.0",
     "websockets>=17.1",
 ]
 
 [project.scripts]
-redis-pubsub = "redis_pubsub:main"
+server = "redis_pubsub.app:run"
+ws = "redis_pubsub.ws_client.ws_client:main"
 
 [build-system]
 requires = ["uv_build>=0.12.7,<0.13.0"]

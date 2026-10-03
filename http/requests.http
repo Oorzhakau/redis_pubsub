@@ -1,0 +1,14 @@
+### app1 health
+GET {{ path1 }}/health
+
+###
+GET {{ path2 }}/health
+
+### app1 publish
+POST {{ path1 }}/publish
+Content-Type: application/json
+
+{
+  "type": "order_id",
+  "payload": {"id": 1, "cost":  3}
+}
