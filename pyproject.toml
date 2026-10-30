@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 server = "redis_pubsub.app:run"
 ws = "redis_pubsub.ws_client.ws_client:main"
+rpc-worker = "redis_pubsub.rpc_worker:run"
 
 [build-system]
 requires = ["uv_build>=0.12.7,<0.13.0"]

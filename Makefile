@@ -10,8 +10,9 @@ COMPOSE := docker compose -p $(PROJECT) -f $(COMPOSE_FILE) --env-file .env
 
 TYPE ?= order_paid
 STATUS ?= paid
+VALUE ?= 21
 
-.PHONY: help certs up down restart logs ps app1 app2 ws1 ws2 wsstate1 wsstate2 publish state bump
+.PHONY: help certs up down restart logs ps app1 app2 ws1 ws2 wsstate1 wsstate2 publish state bump worker rpc
 
 help: ## Показать список доступных команд
 >@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -62,3 +63,9 @@ state: ## Текущее состояние счётчиков заказов (G
 
 order: ## Увеличить счётчик статуса (make bump STATUS=paid)
 >@curl -s -X POST localhost:8001/orders -H 'content-type: application/json' -d '{"status":"$(STATUS)"}' && echo
+
+worker: ## Запустить RPC-worker кейса 3 (Ctrl+C — остановить)
+>@REPLICA_ID=worker1 uv run rpc-worker
+
+rpc: ## RPC-запрос worker'у (make rpc VALUE=21)
+>@curl -s -X POST localhost:8001/rpc -H 'content-type: application/json' -d '{"payload":{"value":$(VALUE)}}' && echo

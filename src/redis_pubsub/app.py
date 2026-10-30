@@ -7,6 +7,10 @@ WS-клиенты /ws/events. Тело события отправляется �
 канал → listener каждой реплики читает снапшот из Redis и рассылает его
 WS-клиентам /ws/state. При подключении клиент сразу получает актуальное состояние.
 
+Кейс 3 (api/rpc.py): /rpc → запрос в очередь rpc:requests (LPUSH) + ожидание
+ответа в rpc:reply:{id} (BLPOP с таймаутом). Отвечает отдельный процесс worker
+(redis_pubsub/rpc_worker.py) — синхронный request/reply поверх списков Redis.
+
 Здесь только композиция: lifespan (Redis-клиент + слушатели каналов), подключение
 роутеров кейсов и служебный /health.
 """
@@ -20,7 +24,7 @@ from typing import Any
 import uvicorn
 from fastapi import FastAPI
 
-from redis_pubsub.api import events, state
+from redis_pubsub.api import events, rpc, state
 from redis_pubsub.config import settings
 from redis_pubsub.listener import run_listener
 from redis_pubsub.redis_client import make_redis
@@ -71,6 +75,7 @@ app = FastAPI(title="redis-pubsub", lifespan=lifespan)
 
 app.include_router(events.router)
 app.include_router(state.router)
+app.include_router(rpc.router)
 
 
 @app.get("/health")

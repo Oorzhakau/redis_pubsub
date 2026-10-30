@@ -5,7 +5,7 @@ from redis.asyncio import Redis
 from redis_pubsub.config import settings
 
 
-def make_redis() -> Redis:
+def make_redis(socket_timeout: float | None = None) -> Redis:
     """Создаёт async-клиент Redis поверх TLS с обязательной проверкой сервера.
 
     Два уровня защиты, потому что так настроена наша инфраструктура:
@@ -15,6 +15,14 @@ def make_redis() -> Redis:
        наш клиентский сертификат (``ssl_certfile``/``ssl_keyfile``).
 
     Плюс ACL-аутентификация (username + password из users.acl.template).
+
+    Args:
+        socket_timeout: Клиентский таймаут чтения ответа, сек. По умолчанию
+            ``None`` (ждать ответа вечно). Это принципиально для блокирующих
+            команд (BLPOP/BRPOP): в redis-py по умолчанию ``socket_timeout=5``,
+            и он обрывает чтение раньше серверного таймаута команды — команда
+            падает ``TimeoutError`` вместо штатного ``None``, а retry повторяет
+            её и растягивает ожидание в ~12 раз (10 попыток + backoff).
 
     Returns:
         Клиент с ленивым соединением: команда установит соединение при первом
@@ -31,5 +39,6 @@ def make_redis() -> Redis:
         ssl_keyfile=str(settings.tls_key),
         ssl_cert_reqs="required",
         ssl_check_hostname=True,
+        socket_timeout=socket_timeout,
         decode_responses=True,
     )

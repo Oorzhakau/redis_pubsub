@@ -12,3 +12,11 @@ Content-Type: application/json
   "type": "order_id",
   "payload": {"id": 1, "cost":  3}
 }
+
+### app1 rpc (кейс 3): view шлёт запрос worker'у и ждёт ответ
+POST {{ path1 }}/rpc
+Content-Type: application/json
+
+{
+  "payload": {"value": 21}
+}

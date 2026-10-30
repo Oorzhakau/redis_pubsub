@@ -27,6 +27,8 @@ class Settings(BaseSettings):
         tls_key: Приватный ключ клиентского сертификата.
         events_channel: Имя канала Pub/Sub для broadcast-событий (кейс 1).
         state_channel: Имя канала сигналов «состояние изменилось» (кейс 2).
+        rpc_requests_queue: Очередь RPC-запросов view → worker (кейс 3).
+        rpc_reply_prefix: Префикс ключей ответов; полный ключ = префикс + correlation_id.
     """
 
     port: int = 8000
@@ -41,6 +43,8 @@ class Settings(BaseSettings):
     tls_key: Path
     events_channel: str = "events"
     state_channel: str = "state:changed"
+    rpc_requests_queue: str = "rpc:requests"
+    rpc_reply_prefix: str = "rpc:reply:"
 
 
 settings = Settings(
